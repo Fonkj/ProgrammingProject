@@ -8,8 +8,8 @@ FPS = 60
 GAME_SPEED = 15 
 TIME_TO_WIN = 20 
 
-AUDIO_PATH = r"D:\Python\Project\Testing\Mario.wav"
-IMAGE_MARIO_PATH = r"D:\Python\Project\Testing\image1.png"
+AUDIO_PATH = r"D:\Python\Project\Testing\Sound.wav"
+IMAGE_MARIO_PATH = r"D:\Python\Project\Testing\image14.png"
 IMAGE_QUEEN_PATH = r"D:\Python\Project\Testing\image2.png"
 
 SKY_BLUE = (100, 150, 255)
@@ -207,7 +207,7 @@ class MarioRunnerGame:
             self.update()
             self.draw()
             self.clock.tick(FPS)
-            
+
 if __name__ == "__main__":
     game = MarioRunnerGame()
     game.run()
