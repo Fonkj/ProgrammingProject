@@ -145,26 +145,69 @@ class Lake(pygame.sprite.Sprite):
         if self.rect.right < 0: self.kill()
 
 class PowerBall(pygame.sprite.Sprite):
-    def __init__(self, x, y, image, target_x):
+    def __init__(self, x, y, image): # Removed the aim-bot target!
         super().__init__()
         self.image = image
         self.rect = self.image.get_rect(center=(x, y))
-        dist_x = target_x - x
-        self.vx = (dist_x / 35) + random.randint(-2, 2)
-        if self.vx > 18: self.vx = 18
-        if self.vx < -18: self.vx = -18
-        self.vy = -5 
+        
+        # --- NEW CHAOS SCATTER PHYSICS ---
+        # Throws mostly left toward Mario, but sometimes straight down or slightly right
+        self.vx = random.randint(-18, 5) 
+        # Pops up in the air randomly before falling
+        self.vy = random.randint(-14, -2) 
+        
         self.gravity = 0.6
         self.floor = SCREEN_HEIGHT - 60
+
     def update(self, scroll):
         self.rect.x += self.vx - scroll
         self.vy += self.gravity
         self.rect.y += self.vy
+        
         if self.rect.bottom >= self.floor:
             self.rect.bottom = self.floor
-            self.vy = -16 
+            self.vy = -16 # Bounce!
+            
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH: 
             self.kill()
+
+
+class FlyingMonster(pygame.sprite.Sprite):
+    def __init__(self, image, ball_image):
+        super().__init__()
+        self.image = image; self.ball_image = ball_image
+        self.rect = self.image.get_rect(midbottom=(SCREEN_WIDTH + 200, 250))
+        self.target_x = SCREEN_WIDTH - 200
+        self.state = "ENTERING"
+        self.balls_thrown = 0
+        self.throw_timer = 0
+
+    def update(self, powerball_group, mario):
+        if self.state == "ENTERING":
+            self.rect.x -= 8 
+            if self.rect.centerx <= self.target_x:
+                self.state = "THROWING"
+                self.throw_timer = pygame.time.get_ticks()
+                
+        elif self.state == "THROWING":
+            # The boss still tracks your movements so it hovers near you
+            if self.rect.centerx < mario.rect.centerx:
+                self.rect.x += 3
+            elif self.rect.centerx > mario.rect.centerx:
+                self.rect.x -= 3
+
+            if self.balls_thrown < 8: # Added 2 extra balls to make the scatter dangerous!
+                # Shoots much faster now (every 600ms) to create a "bullet hell"
+                if pygame.time.get_ticks() - self.throw_timer > 600:
+                    powerball_group.add(PowerBall(self.rect.centerx, self.rect.bottom, self.ball_image))
+                    self.balls_thrown += 1
+                    self.throw_timer = pygame.time.get_ticks()
+            else:
+                self.state = "LEAVING"
+                
+        elif self.state == "LEAVING":
+            self.rect.y -= 8; self.rect.x += 5 
+            if self.rect.bottom < 0: self.kill()
 
 class ChaserBall(pygame.sprite.Sprite):
     def __init__(self, x, y, image):
@@ -191,6 +234,38 @@ class ChaserBall(pygame.sprite.Sprite):
         if self.rect.left > SCREEN_WIDTH or self.rect.right < 0: 
             self.kill()
 
+class PowerBall(pygame.sprite.Sprite):
+    def __init__(self, x, y, image, target_x):
+        super().__init__()
+        self.image = image
+        self.rect = self.image.get_rect(center=(x, y))
+        
+        # --- PREDICTIVE SCATTER PHYSICS ---
+        dist_x = target_x - x
+        # Calculates the exact base speed needed to hit the predicted zone, plus a little random chaos
+        self.vx = (dist_x / 30) + random.randint(-6, 6) 
+        
+        # Clamp the speed so it doesn't break the sound barrier and become impossible to dodge
+        if self.vx > 22: self.vx = 22
+        if self.vx < -22: self.vx = -22
+        
+        self.vy = random.randint(-15, -5) # Random pop up arc
+        self.gravity = 0.6
+        self.floor = SCREEN_HEIGHT - 60
+
+    def update(self, scroll):
+        self.rect.x += self.vx - scroll
+        self.vy += self.gravity
+        self.rect.y += self.vy
+        
+        if self.rect.bottom >= self.floor:
+            self.rect.bottom = self.floor
+            self.vy = -16 # Bounce!
+            
+        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH: 
+            self.kill()
+
+
 class FlyingMonster(pygame.sprite.Sprite):
     def __init__(self, image, ball_image):
         super().__init__()
@@ -205,19 +280,31 @@ class FlyingMonster(pygame.sprite.Sprite):
             self.rect.x -= 8 
             if self.rect.centerx <= self.target_x:
                 self.state = "THROWING"
-                self.throw_timer = pygame.time.get_ticks()
+                self.throw_timer = pygame.time.get_ticks()               
         elif self.state == "THROWING":
             if self.rect.centerx < mario.rect.centerx:
-                self.rect.x += 3
+                self.rect.x += 5
             elif self.rect.centerx > mario.rect.centerx:
-                self.rect.x -= 3
-            if self.balls_thrown < 6:
-                if pygame.time.get_ticks() - self.throw_timer > 1000:
-                    powerball_group.add(PowerBall(self.rect.centerx, self.rect.bottom, self.ball_image, mario.rect.centerx))
+                self.rect.x -= 5
+            if self.balls_thrown < 8:
+                if pygame.time.get_ticks() - self.throw_timer > 600:                    
+                    keys = pygame.key.get_pressed()
+                    predicted_offset = 0                                    
+                    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                        # Check if you are holding sprint or just running normal
+                        current_speed = 25 if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]) else 15
+                        # Multiply by ~15 frames to find the danger zone in front of you
+                        predicted_offset = current_speed * 15                                         
+                    elif keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                        current_speed = 25 if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]) else 15
+                        predicted_offset = -(current_speed * 15)                   
+                    predicted_x = mario.rect.centerx + predicted_offset                   
+                    # Throw the ball at the predicted target!
+                    powerball_group.add(PowerBall(self.rect.centerx, self.rect.bottom, self.ball_image, predicted_x))                    
                     self.balls_thrown += 1
                     self.throw_timer = pygame.time.get_ticks()
             else:
-                self.state = "LEAVING"
+                self.state = "LEAVING"               
         elif self.state == "LEAVING":
             self.rect.y -= 8; self.rect.x += 5 
             if self.rect.bottom < 0: self.kill()
